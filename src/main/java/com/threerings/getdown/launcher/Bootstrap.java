@@ -32,10 +32,10 @@ public class Bootstrap {
         appdir.mkdir();
 
         // write out getdown.txt with appbase
-        writeGetdownTxt(HOME, args[1]); // appbase
+        writeGetdownTxt(appdir, args[1]); // appbase
 
         // call Getdown using "user.dir" as appdir
-        GetdownApp.main(new String[] {HOME.getAbsolutePath()});
+        GetdownApp.main(new String[] {appdir.getAbsolutePath()});
     }
 
     /**
