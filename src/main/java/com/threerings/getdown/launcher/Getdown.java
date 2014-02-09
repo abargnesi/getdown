@@ -407,11 +407,9 @@ public abstract class Getdown extends Thread
 
             //setStep(Step.START);
             for (int ii = 0; ii < MAX_LOOPS; ii++) {
-                // if we aren't running in a JVM that meets our version requirements, either
-                // complain or attempt to download and install the appropriate version
-                if (!_app.haveValidJavaVersion()) {
-                    // download and install the necessary version of java, then loop back again and
-                    // reverify everything; if we can't download java; we'll throw an exception
+                // unpack java vm resource; continue to next iteration once we do
+                Resource vmjar = _app.getJavaVMResource();
+                if (!vmjar.isMarkedValid()) {
                     log.info("Attempting to update Java VM...");
                     setStep(Step.UPDATE_JAVA);
                     _enableTracking = true; // always track JVM downloads
