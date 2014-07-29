@@ -1,7 +1,7 @@
 //
 // Getdown - application installer, patcher and launcher
-// Copyright (C) 2004-2013 Three Rings Design, Inc.
-// http://code.google.com/p/getdown/source/browse/LICENSE
+// Copyright (C) 2004-2014 Three Rings Design, Inc.
+// https://raw.github.com/threerings/getdown/master/LICENSE
 
 package com.threerings.getdown.data;
 
@@ -120,7 +120,7 @@ public class Application
         public String name;
 
         /** A background color, just in case. */
-        public Color background;
+        public Color background = Color.white;
 
         /** Background image specifiers for {@link RotatingBackgrounds}. */
         public String[] rotatingBackgrounds;
@@ -261,7 +261,7 @@ public class Application
         try {
             return createResource(CONFIG_FILE, false);
         } catch (Exception e) {
-            throw new RuntimeException("Invalid appbase '" + _vappbase + "'.");
+            throw new RuntimeException("Invalid appbase '" + _vappbase + "'.", e);
         }
     }
 
@@ -472,10 +472,10 @@ public class Application
     }
 
     /**
-     * Instructs the application to parse its <code>getdown.txt</code> configuration and prepare
-     * itself for operation. The application base URL will be parsed first so that if there are
-     * errors discovered later, the caller can use the application base to download a new
-     * <code>config.txt</code> file and try again.
+     * Instructs the application to parse its {@code getdown.txt} configuration and prepare itself
+     * for operation. The application base URL will be parsed first so that if there are errors
+     * discovered later, the caller can use the application base to download a new {@code
+     * getdown.txt} file and try again.
      *
      * @return a configured UpdateInterface instance that will be used to configure the update UI.
      *
@@ -485,26 +485,41 @@ public class Application
     public UpdateInterface init (boolean checkPlatform)
         throws IOException
     {
-        // parse our configuration file
         Map<String,Object> cdata = null;
+        File config = _config;
         try {
-            cdata = ConfigUtil.parseConfig(_config, checkPlatform);
-        } catch (FileNotFoundException fnfe) {
-            // thanks to funny windows bullshit, we have to do this backup file fiddling in case we
-            // got screwed while updating our very critical getdown config file
-            File cbackup = getLocalPath(CONFIG_FILE + "_old");
-            if (cbackup.exists()) {
-                cdata = ConfigUtil.parseConfig(cbackup, checkPlatform);
-            } else {
-                throw fnfe;
+            // if we have a configuration file, read the data from it
+            if (config.exists()) {
+                cdata = ConfigUtil.parseConfig(_config, checkPlatform);
             }
+            // otherwise, try reading data from our backup config file; thanks to funny windows
+            // bullshit, we have to do this backup file fiddling in case we got screwed while
+            // updating getdown.txt during normal operation
+            else if ((config = getLocalPath(CONFIG_FILE + "_old")).exists()) {
+                cdata = ConfigUtil.parseConfig(config, checkPlatform);
+            }
+            // otherwise, issue a warning that we found no getdown file
+            else {
+                log.info("Found no getdown.txt file", "appdir", _appdir);
+            }
+        } catch (Exception e) {
+            log.warning("Failure reading config file", "file", config, e);
+        }
+
+        // if we failed to read our config file, check for an appbase specified via a system
+        // property; we can use that to bootstrap ourselves back into operation
+        if (cdata == null) {
+            String appbase = SysProps.appBase();
+            log.info("Attempting to obtain 'appbase' from system property", "appbase", appbase);
+            cdata = new HashMap<String,Object>();
+            cdata.put("appbase", appbase);
         }
 
         // first determine our application base, this way if anything goes wrong later in the
         // process, our caller can use the appbase to download a new configuration file
         _appbase = (String)cdata.get("appbase");
         if (_appbase == null) {
-            throw new IOException("m.missing_appbase");
+            throw new RuntimeException("m.missing_appbase");
         }
         // make sure there's a trailing slash
         if (!_appbase.endsWith("/")) {
@@ -524,11 +539,7 @@ public class Application
 
         // if we are a versioned deployment, create a versioned appbase
         try {
-            if (_version < 0) {
-                _vappbase = new URL(_appbase);
-            } else {
-                _vappbase = createVAppBase(_version);
-            }
+            _vappbase = (_version < 0) ? new URL(_appbase) : createVAppBase(_version);
         } catch (MalformedURLException mue) {
             String err = MessageUtil.tcompose("m.invalid_appbase", _appbase);
             throw (IOException) new IOException(err).initCause(mue);
@@ -821,6 +832,14 @@ public class Application
     public boolean hasOptimumJvmArgs ()
     {
         return _optimumJvmArgs != null;
+    }
+
+    /**
+     * Returns true if the app should attempt to run even if we have no Internet connection.
+     */
+    public boolean allowOffline ()
+    {
+        return _allowOffline;
     }
 
     /**
