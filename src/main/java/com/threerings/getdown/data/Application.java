@@ -792,6 +792,9 @@ public class Application
 
         // find local java version
         String version = checkLocalVm();
+        if (version == null) {
+            return false;
+        }
 
         Matcher m = Pattern.compile("(\\d+)\\.(\\d+)\\.(\\d+)(_\\d+)?.*").matcher(version);
         if (!m.matches()) {
