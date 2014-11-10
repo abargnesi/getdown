@@ -68,6 +68,8 @@ import com.threerings.getdown.util.ProgressObserver;
 import com.threerings.getdown.util.VersionUtil;
 
 import static com.threerings.getdown.Log.log;
+import static java.lang.String.format;
+import static java.util.Arrays.asList;
 
 /**
  * Parses and provide access to the information contained in the <code>getdown.txt</code>
@@ -87,6 +89,8 @@ public class Application
 
     /** Suffix used for control file signatures. */
     public static final String SIGNATURE_SUFFIX = ".sig";
+
+    private static final Pattern JAVA_VERSION_PATTERN = Pattern.compile("java version \"(\\d+\\.\\d+\\.\\d+_\\d+)\"$");
 
     /** Used to communicate information about the UI displayed when updating the application. */
     public static class UpdateInterface
@@ -786,20 +790,15 @@ public class Application
             return true;
         }
 
-        // if we have a fully unpacked VM assume it is the right version (TODO: don't)
-        Resource vmjar = getJavaVMResource();
-        if (vmjar != null && vmjar.isMarkedValid()) {
-            return true;
-        }
+        // find local java version
+        String version = checkLocalVm();
 
-        // parse the version out of the java.version system property
-        String verstr = System.getProperty("java.version");
-        Matcher m = Pattern.compile("(\\d+)\\.(\\d+)\\.(\\d+)(_\\d+)?.*").matcher(verstr);
+        Matcher m = Pattern.compile("(\\d+)\\.(\\d+)\\.(\\d+)(_\\d+)?.*").matcher(version);
         if (!m.matches()) {
             // if we can't parse the java version we're in weird land and should probably just try
             // our luck with what we've got rather than try to download a new jvm
             log.warning("Unable to parse VM version, hoping for the best",
-                        "version", verstr, "needed", _javaMinVersion);
+                        "version", version, "needed", _javaMinVersion);
             return true;
         }
 
@@ -807,10 +806,10 @@ public class Application
         int minor = Integer.parseInt(m.group(2));
         int revis = Integer.parseInt(m.group(3));
         int patch = m.group(4) == null ? 0 : Integer.parseInt(m.group(4).substring(1));
-        int version = patch + 100 * (revis + 100 * (minor + 100 * major));
+        int versionNumber = patch + 100 * (revis + 100 * (minor + 100 * major));
 
         if (_javaExactVersionRequired) {
-            if (version == _javaMinVersion) {
+            if (versionNumber == _javaMinVersion) {
                 return true;
             } else {
                 log.warning("An exact Java VM version is required.", "current", version,
@@ -819,9 +818,53 @@ public class Application
             }
         }
 
-        boolean minVersionOK = (_javaMinVersion == 0) || (version >= _javaMinVersion);
-        boolean maxVersionOK = (_javaMaxVersion == 0) || (version <= _javaMaxVersion);
+        boolean minVersionOK = (_javaMinVersion == 0) || (versionNumber >= _javaMinVersion);
+        boolean maxVersionOK = (_javaMaxVersion == 0) || (versionNumber <= _javaMaxVersion);
         return minVersionOK && maxVersionOK;
+    }
+
+    private String checkLocalVm() {
+        String version = null;
+        Resource vmjar = getJavaVMResource();
+        if (vmjar != null && vmjar.isMarkedValid()) {
+            File vm = new File(_appdir, "java_vm");
+            if (vm.exists()) {
+
+                String[] paths = new String[] { "bin/java.exe", "bin/java" };
+
+                for (String path : paths) {
+                    File javaCmd = new File(vm, path);
+                    if (javaCmd.exists()) {
+                        try {
+                            Process p = new ProcessBuilder().
+                                    directory(_appdir).
+                                    command(asList(javaCmd.getAbsolutePath(), "-version")).
+                                    start();
+                            int exitValue = p.waitFor();
+                            if (exitValue == 0) {
+                                BufferedReader reader = new BufferedReader(new InputStreamReader(p.getErrorStream()));
+                                try {
+                                    String line;
+                                    while ((line = reader.readLine()) != null) {
+                                        Matcher lm = JAVA_VERSION_PATTERN.matcher(line.trim());
+                                        if (lm.matches()) {
+                                            version = lm.group(1);
+                                        }
+                                    }
+                                } finally {
+                                    reader.close();
+                                }
+                            }
+                        } catch (IOException e) {
+                            // Could not read java version, move on.
+                        } catch (InterruptedException e) {
+                            // Interrupted while waiting, move on.
+                        }
+                    }
+                }
+            }
+        }
+        return version;
     }
 
     /**

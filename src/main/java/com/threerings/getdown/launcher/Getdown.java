@@ -410,8 +410,7 @@ public abstract class Getdown extends Thread
             //setStep(Step.START);
             for (int ii = 0; ii < MAX_LOOPS; ii++) {
                 // unpack java vm resource; continue to next iteration once we do
-                Resource vmjar = _app.getJavaVMResource();
-                if (!vmjar.isMarkedValid()) {
+                if (!_app.haveValidJavaVersion()) {
                     log.info("Attempting to update Java VM...");
                     setStep(Step.UPDATE_JAVA);
                     _enableTracking = true; // always track JVM downloads
